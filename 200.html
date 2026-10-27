@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>وُدِّي · مشاركة</title>
+    <meta name="description" content="وُدِّي — اطّلع على طلب مشترك من العائلة." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Nunito:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #fff8f3;
+        --blush: #f6e7e2;
+        --rose: #b75d69;
+        --deep: #6e2c3a;
+        --ink: #2c1b1f;
+        --muted: #8a6e73;
+        --petal: #f3d6dc;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background: linear-gradient(180deg, var(--cream), var(--blush) 42%, var(--cream));
+        color: var(--ink);
+        font-family: Amiri, serif;
+        line-height: 1.7;
+      }
+      .brand { font-family: "Aref Ruqaa", Amiri, serif; }
+      .en { font-family: Nunito, sans-serif; direction: ltr; }
+      main {
+        max-width: 420px;
+        margin: 0 auto;
+        padding: 28px 18px 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-height: 100dvh;
+      }
+      .card {
+        background: #fffbf8;
+        border: 1px solid #e8c9ce;
+        border-radius: 24px;
+        padding: 18px 16px;
+        box-shadow: 0 10px 30px rgba(183, 93, 105, 0.08);
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--petal);
+        color: var(--deep);
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .item {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 0;
+        border-top: 1px solid #f0dde1;
+        font-size: 15px;
+      }
+      .item:first-child { border-top: 0; }
+      .cta {
+        display: block;
+        text-align: center;
+        text-decoration: none;
+        color: #fff;
+        font-weight: 700;
+        border-radius: 18px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, var(--rose), var(--deep));
+      }
+      .muted { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header style="text-align:center">
+        <p class="brand" style="font-size:42px;color:var(--deep);margin:0">وُدِّي</p>
+        <p class="en muted" style="margin:4px 0 0;font-size:13px">Shared request · طلب مشترك</p>
+      </header>
+      <section id="card" class="card">
+        <p id="state" class="muted" style="text-align:center;margin:8px 0">…</p>
+      </section>
+      <section style="margin-top:auto">
+        <a id="cta" class="cta" href="https://apps.apple.com/app/id6817007646">افتح وُدِّي</a>
+        <p class="en muted" style="text-align:center;font-size:12px;margin:10px 0 0">
+          Private lists for family · مساحة خاصة للعائلة
+        </p>
+      </section>
+    </main>
+    <script>
+      const SUPABASE_URL = "https://mxrfmpigdefkvephajek.supabase.co";
+      const SUPABASE_ANON_KEY = "sb_publishable_cEU_IJLNksD862dM0b_AvQ_VOwnfBWq";
+      const APP_STORE = "https://apps.apple.com/app/id6817007646";
+      const PLAY_STORE =
+        "https://play.google.com/store/apps/details?id=com.wuddi.wuddi";
+
+      const labels = {
+        open: "مفتوح",
+        in_progress: "قيد التنفيذ",
+        done: "مكتمل",
+        cancelled: "ملغى",
+        pending: "بالانتظار",
+        bought: "تم",
+        skipped: "تم التجاوز",
+        denied: "مرفوض",
+      };
+
+      function tokenFromLocation() {
+        const params = new URLSearchParams(location.search);
+        const q = params.get("t") || params.get("token");
+        if (q) return q.trim();
+        if (location.hash && location.hash.length > 1) {
+          return location.hash.slice(1).trim();
+        }
+        const parts = location.pathname.split("/").filter(Boolean);
+        const i = parts.lastIndexOf("p");
+        if (i >= 0 && parts[i + 1] && parts[i + 1] !== "index.html") {
+          return parts[i + 1];
+        }
+        // https://wuddi.surge.sh/{token}
+        if (parts.length === 1 && parts[0] !== "index.html" && parts[0].length >= 8) {
+          return parts[0];
+        }
+        return "";
+      }
+
+      function esc(s) {
+        return String(s || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent);
+      }
+
+      async function main() {
+        const token = tokenFromLocation();
+        const card = document.getElementById("card");
+        const state = document.getElementById("state");
+        const cta = document.getElementById("cta");
+        cta.href = isIOS() ? APP_STORE : PLAY_STORE;
+        if (!token) {
+          state.textContent = "رابط غير مكتمل";
+          return;
+        }
+        try {
+          const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/resolve_public_share", {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: "Bearer " + SUPABASE_ANON_KEY,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ p_token: token }),
+          });
+          const data = await res.json();
+          if (!data || typeof data !== "object" || Array.isArray(data)) {
+            state.textContent = "الرابط غير متاح أو انتهت صلاحيته";
+            return;
+          }
+
+          // Prefer request-shaped payloads; item shares still show as a single line.
+          const emoji = data.emoji || (data.kind === "request" ? "📋" : "📦");
+          const title = esc(data.title || "طلب");
+          const status = labels[data.status] || data.status || "";
+          const shopEmoji = {
+            "سوق الخضار والفواكه": "🍎",
+            البقالة: "🛒",
+            المخبز: "🍞",
+            "اللحوم والدواجن": "🍗",
+            الأسماك: "🐟",
+            الألبان: "🥛",
+            الصيدلية: "💊",
+            القرطاسية: "✏️",
+            البيت: "🏠",
+            المطبخ: "🍳",
+            الحمام: "🛁",
+            "غرفة المعيشة": "🛋️",
+            "غرفة النوم": "🛏️",
+            الغسيل: "👕",
+          };
+          function placeMark(name) {
+            if (!name) return "📍";
+            return shopEmoji[name] || "📍";
+          }
+
+          const items = Array.isArray(data.items) ? data.items : [];
+          let itemsHtml = "";
+          if (items.length) {
+            // One shop mark per place — no repeated item glyphs.
+            const byPlace = {};
+            items.slice(0, 24).forEach(function (item) {
+              const key = item.place_name || "بدون مكان محدد";
+              (byPlace[key] = byPlace[key] || []).push(item);
+            });
+            itemsHtml =
+              '<div style="margin-top:12px">' +
+              Object.keys(byPlace)
+                .map(function (place) {
+                  const lines = byPlace[place]
+                    .map(function (item) {
+                      const st = labels[item.status] || item.status || "";
+                      const qty =
+                        item.quantity != null
+                          ? " · " +
+                            item.quantity +
+                            (item.unit ? " " + esc(item.unit) : "")
+                          : "";
+                      return (
+                        '<div class="item"><span>' +
+                        esc(item.title || "") +
+                        qty +
+                        '</span><span class="muted">' +
+                        esc(st) +
+                        "</span></div>"
+                      );
+                    })
+                    .join("");
+                  return (
+                    '<div style="margin-top:10px">' +
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+                    '<span style="font-size:20px">' +
+                    placeMark(place) +
+                    "</span>" +
+                    '<span style="font-weight:700;color:var(--deep)">' +
+                    esc(place) +
+                    "</span></div>" +
+                    lines +
+                    "</div>"
+                  );
+                })
+                .join("") +
+              "</div>";
+          } else if (data.kind === "request_item") {
+            const qty =
+              data.quantity != null
+                ? " · " + data.quantity + (data.unit ? " " + esc(data.unit) : "")
+                : "";
+            itemsHtml =
+              '<div style="margin-top:12px"><div class="item"><span>' +
+              title +
+              qty +
+              '</span><span class="muted">' +
+              esc(status) +
+              "</span></div></div>";
+          }
+
+          card.innerHTML =
+            '<div style="display:flex;gap:12px;align-items:flex-start">' +
+            '<div style="font-size:30px">' +
+            emoji +
+            "</div><div style='flex:1'>" +
+            '<p class="pill">' +
+            (data.kind === "request" ? "طلب" : "بند") +
+            (status ? " · " + esc(status) : "") +
+            "</p>" +
+            '<h1 class="brand" style="font-size:26px;color:var(--deep);margin:8px 0 0">' +
+            title +
+            "</h1>" +
+            (data.open_count != null
+              ? '<p class="muted" style="margin:6px 0 0;font-size:14px">' +
+                data.open_count +
+                " مفتوح · " +
+                (data.done_count || 0) +
+                " منجز</p>"
+              : "") +
+            "</div></div>" +
+            itemsHtml;
+        } catch (e) {
+          state.textContent = "تعذّر التحميل";
+        }
+      }
+      main();
+    </script>
+  </body>
+</html>
